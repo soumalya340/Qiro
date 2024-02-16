@@ -1,6 +1,7 @@
-module my_addrx::lending_vault{
+module qiro::lending_vault{
 use std::signer;
 use aptos_framework::account;
+use aptos_framework::tx_context::TxContext;
 use std::vector;
 use aptos_framework::timestamp;
 use aptos_framework::coin;
@@ -26,42 +27,49 @@ struct Balance has key {
 
 /// Error codes
 const ERR_BALANCE_NOT_EXISTS: u64 = 101;
+const ERR_USER_NOT_EXISTS: u64 = 42;
 const ERR_BALANCE_EXISTS: u64 = 102;
 const EINSUFFICIENT_BALANCE: u64 = 1;
 const EALREADY_HAS_BALANCE: u64 = 2;
 const EEQUAL_ADDR: u64 = 4;
 
 // Events
-pub struct Deposited {
+#[event]
+struct Deposited {
     user: address,
     amount: u64,
     lp_tokens: u64,
 }
-
-pub struct Withdrew {
+#[event]
+struct Withdrew {
     user: address,
     amount: u64,
     lp_tokens_burned: u64,
 }
-
-pub struct InterestAccrued {
+#[event]
+struct InterestAccrued {
     total_interest: u64,
 }
 
 // Admin Features
-public entry fun add_to_whitelist(account: &signer, addresses: vector<address>) acquires Whitelist {
-    assert!(Signer::address_of(account) == ADMIN_ADDRESS,  1);
+public entry fun add_to_whitelist(addresses: vector<address>) acquires Whitelist {
+    assert!(signer::address_of(&signer) == ADMIN_ADDRESS,1);
     let whitelist = borrow_global_mut<Whitelist>(signer::address_of(account));
-    for addr in addresses {
+    let len = vector::length(&addresses);
+    let i = 0;
+
+    while (i < len) {
+        let addr = *vector::borrow(&addresses, i);
         // Ensure user is not already whitelisted
-        assert!(!vector::contains(&whitelist.whitelist, *addr), EALREADY_HAS_BALANCE);
-        vector::push_back(&mut whitelist.whitelist, *addr);
+        assert!(!vector::contains(&whitelist.whitelist, addr), EALREADY_HAS_BALANCE);
+        vector::push_back(&mut whitelist.whitelist, addr);
+        i = i + 1;
     }
 }
 
 // Deposit Functionality with Minting
 public fun deposit(acc_addr: address, coins: Coins) acquires Balance {
-    assert!(is_whitelisted(acc_addr), "User is not whitelisted");
+    assert!(is_whitelisted(acc_addr),ERR_USER_NOT_EXISTS);
 
     let mut balance = ensure_balance_exists(acc_addr); // Create balance if it doesn't exist
 
@@ -134,6 +142,7 @@ fun create_balance(acc_addr: address) {
 }
 
 // Function to calculate interest based on a formula (replace with your specific formula)
+#[view]
 fun calculate_interest(principal: u64, time_passed: u64): u64 {
     // Replace with your interest calculation formula, considering annual rate, time passed, and compounding if applicable
     let annual_interest_rate = 10; // 10% annual interest rate (example)
@@ -144,7 +153,7 @@ fun calculate_interest(principal: u64, time_passed: u64): u64 {
 
 // Prefilled Money with Event Logging
 public entry fun initialize_vault(amount: u64) {
-    assert!(Signer::address_of(&signer) == ADMIN_ADDRESS, 1);
+    assert!(signer::address_of(&signer) == ADMIN_ADDRESS, 1);
 
     let prefilled_coins = Coins { val: amount };
     move_to(account::self_address(), prefilled_coins);
@@ -153,25 +162,9 @@ public entry fun initialize_vault(amount: u64) {
         total_interest: 0, // Initially no interest accrued
     });
 }
-
-
-#[test]
-fn test_withdraw_unauthorized() {
-    // Set up test environment
-    let mut balance = Balance { coins: Coins { val: 0 }, lp_tokens: 0, last_deposit_time: timestamp::get_time() };
-    let user_address = account::new();
-    let unauthorized_address = account::new();
-
-    // Whitelist the user
-    let mut whitelist = Whitelist { whitelist: vec![user_address] };
-    add_to_whitelist(&mut whitelist, vector![user_address]);
-
-    // Attempt to withdraw from unauthorized address
-    let result = withdraw(unauthorized_address, coin::unit(10));
-
-    // Assert error
-    assert!(result.is_err(), "Successfully withdrew from unauthorized address");
-}
-
+ #[view]
+    public fun balance(owner: address): u64 acquires Balance {
+        borrow_global<Balance>(owner).coins.val
+    }
 
 }

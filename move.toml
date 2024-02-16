@@ -8,5 +8,5 @@ rev = 'devnet'
 subdir = 'aptos-move/framework/aptos-framework'
 
 [addresses]
-my_addrx = "0x42"
+qiro = "0x42"
 std = "0x1"
