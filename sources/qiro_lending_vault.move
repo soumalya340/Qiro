@@ -5,11 +5,11 @@ module qiro::lending_vault {
     use aptos_framework::coin;
     use aptos_std::type_info::TypeInfo;
     use aptos_std::simple_map::SimpleMap;
-
-    const ADMIN_ADDRESS: address = @0x1;
+    use switchboard::aggregator; // For reading aggregators
+    use switchboard::feed;
 
     // Resources
-    struct Whitelist has key, store {
+    struct Whitelist has key{
         whitelist: vector<address>,
     }
 
@@ -19,34 +19,67 @@ module qiro::lending_vault {
         last_deposit_time: u64,
     }
 
+     struct AggregatorInfo has copy, drop, store, key {
+        aggregator_addr: address,
+        latest_result: u128,
+        latest_result_scaling_factor: u8,
+    }
+
     // Error codes
     const ERR_NOT_ADMIN: u64 = 1;
     const ERR_USER_NOT_WHITELISTED: u64 = 42;
     const ERR_INSUFFICIENT_BALANCE: u64 = 101;
     const ERR_ALREADY_WHITELISTED: u64 = 102;
 
+    const EAGGREGATOR_INFO_EXISTS:u64 = 0;
+    const ENO_AGGREGATOR_INFO_EXISTS:u64 = 1;
+
     // Events
     #[event]
-    struct Deposited has drop,store{
+    struct DepositedEvent has drop,store{
         user: address,
         amount: u64,
         lp_tokens: u64,
     }
 
     #[event]
-    struct Withdrew has drop,store{
+    struct WithdrewEvent has drop,store{
         user: address,
         amount: u64,
         lp_tokens_burned: u64,
     }
 
     #[event]
-    struct InterestAccrued has drop,store {
+    struct InterestAccruedEvent has drop,store {
         total_interest: u64,
     }
 
+    // Initialize vault with initial amount and whitelist
+    fun init_module(_admin: &signer, initial_amount: u64) {
+        assert!(signer::address_of(_admin) == ADMIN_ADDRESS, ERR_NOT_ADMIN);
+        move_to(_admin, Whitelist { whitelist: vector::empty() });
+        // Optionally add initial funding logic here
+        // Event for interest accrued could be initialized here if needed
+    }    
+
+    // add AggregatorInfo resource with latest value + aggregator address
+    public entry fun log_aggregator_info(
+        account: &signer,
+        aggregator_addr: address, 
+    ) {       
+        assert!(!exists<AggregatorInfo>(signer::address_of(account)), EAGGREGATOR_INFO_EXISTS);
+
+        // get latest value 
+        let (value, credit_factor, _neg) = feed::unpack(aggregator::latest_value(aggregator_addr)); 
+        move_to(account, AggregatorInfo {
+            aggregator_addr: aggregator_addr,
+            latest_result: value,
+            latest_result_scaling_factor: scaling_factor
+        });
+    }
+
     // Admin Features
-    public fun add_to_whitelist(_admin: &signer, addresses: vector<address>) acquires Whitelist {
+    public entry fun add_to_whitelist(_admin: &signer, addresses: vector<address>) acquires Whitelist {
         assert!(signer::address_of(_admin) == ADMIN_ADDRESS, ERR_NOT_ADMIN);
         let whitelist = borrow_global_mut<Whitelist>(ADMIN_ADDRESS);
         let len = vector::length(&addresses);
@@ -62,12 +95,15 @@ module qiro::lending_vault {
     }
 
     // Checks if an address is whitelisted
-    public fun is_whitelisted(addr: address): bool acquires Whitelist {
+    #[view]
+    public entry fun is_whitelisted(addr: &signer): bool acquires Whitelist {
         let whitelist = borrow_global<Whitelist>(ADMIN_ADDRESS);
-        vector::contains(&whitelist.whitelist, &addr)
+        let user = signer::address_of(addr);
+        vector::contains(&whitelist.whitelist, user);
     }
 
     // Deposit Functionality with Minting
+
     public fun deposit(_account: &signer, amount: u64) acquires Balance,Whitelist {
         let acc_addr = signer::address_of(_account);
         assert!(is_whitelisted(acc_addr), ERR_USER_NOT_WHITELISTED);
@@ -133,14 +169,6 @@ module qiro::lending_vault {
         let interest_for_period = (principal * annual_interest_rate * time_passed) / (365 * 24 * 60 * 60 * 100);
         interest_for_period
     }
-
-    // Initialize vault with initial amount and whitelist
-    public fun initialize_vault(_admin: &signer, initial_amount: u64) {
-        assert!(signer::address_of(_admin) == ADMIN_ADDRESS, ERR_NOT_ADMIN);
-        move_to(_admin, Whitelist { whitelist: vector::empty() });
-        // Optionally add initial funding logic here
-        // Event for interest accrued could be initialized here if needed
-    }    
     
 }
 

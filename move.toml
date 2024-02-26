@@ -2,11 +2,20 @@
 name = 'qiro'
 version = '1.0.0'
 
-[dependencies.AptosFramework]
-git = 'https://github.com/aptos-labs/aptos-core.git'
-rev = 'devnet'
-subdir = 'aptos-move/framework/aptos-framework'
+[dependencies]
+MoveStdlib = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/move-stdlib/", rev = "testnet" }
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework/", rev = "testnet" }
+AptosStdlib = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-stdlib/", rev = "testnet" }
+
 
 [addresses]
 qiro = "0x42"
 std = "0x1"
+switchboard = "_"
+switchboard_feed_parser = "_"
+
+
+[dependencies.Switchboard]
+git = "https://github.com/switchboard-xyz/sbv2-aptos.git"
+subdir = "move/switchboard/"
+rev = "main"
